@@ -16,4 +16,4 @@ The tool is written using the DPMFA Python package (github.com/empa-tsl/dpmfa), 
 
 Each model.py takes as input a csv file containing the probability distributions of the produced amounts of graphene in each year in the corresponding product categories: "[NAME].csv"
 
-For further details, the user is referred to the above publication.
+For further details regarding each scenario, the user is referred to the above publication.
