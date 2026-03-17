@@ -2,7 +2,7 @@
 These simulated scenarios are developed as part of the following publication: 
 "Advanced materials in a circular economy: Insights from a prospective material flow scenario analysis of graphene in Europe"
 
-Authors: Luis Mauricio Ortiz-Galvez, Lora Dameska. and Bernd Nowack
+Authors: Luis Mauricio Ortiz-Galvez, Lora Dameska, and Bernd Nowack
 
 Journal: Resources, Conservation, and Recycling
 
