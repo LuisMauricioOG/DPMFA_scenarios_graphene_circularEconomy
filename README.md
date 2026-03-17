@@ -1,10 +1,10 @@
-# Extended_DPMFA_scenarios_graphene
-These simulated scenarios are developed as part of the following publication:
-Title: 
+# DPMFA_scenarios_graphene_circularEconomy
+These simulated scenarios are developed as part of the following publication: 
+"Advanced materials in a circular economy: Insights from a prospective material flow scenario analysis of graphene in Europe"
 
-Authors:
+Authors: Luis Mauricio Ortiz-Galvez, Lora Dameska. and Bernd Nowack
 
-Journal:
+Journal: Resources, Conservation, and Recycling
 
 These prospective scenarios generate probability distributions associated with the flows of graphene within the lifecycle of three product categories: batteries, tires, and construction, and potential releases to the environment, at the European level (EU27, Norway, the United Kingdom, and Switzerland) from 2014 to 2050 with yearly intervals.
 
@@ -12,8 +12,8 @@ The tool is written using the DPMFA Python package (github.com/empa-tsl/dpmfa), 
 * Components.py: the different classes of compartments and flows are defined;
 * Model.py: the required methods to link the compartments together with the flows are defined;
 * Simulator.py: includes the methods required to run the simulation and extract results;
-* [NAME OF EACH MODEL AND RUN]
+* The main scripts with each scenario modeled are: DPMFA_graphene_TBC_model_S1.py and DPMFA_graphene_TBC_runner_S1.py
 
-Each model.py takes as input a csv file containing the probability distributions of the produced amounts of graphene in each year in the corresponding product categories: "[NAME].csv"
+Each DPMFA_graphene_TBC_model_S.py takes as input a CSV file containing the probability distributions of the produced amounts of graphene in each year in the corresponding product categories: "for_py_graphene_TBC.csv"
 
-For further details regarding each scenario, the user is referred to the above publication.
+For further details on each scenario, the user is referred to the publication above.
