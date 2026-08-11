@@ -297,8 +297,8 @@ def format_seconds(seconds: float) -> str:
 def discover_runner_jobs() -> List[Dict[str, Any]]:
     """
     Discover runner scripts from:
-        SensitivityAnalysis_runs\S1_SA
-        SensitivityAnalysis_runs\S3_SA
+        SensitivityAnalysis_runs/S1_SA
+        SensitivityAnalysis_runs/S3_SA
 
     Expected filename pattern:
         DPMFA_graphene_TBC_runner_S1_base.py
