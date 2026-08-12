@@ -6,7 +6,7 @@ Authors: Luis Mauricio Ortiz-Galvez, Lora Dameska, and Bernd Nowack
 
 Journal: Resources, Conservation, and Recycling
 
-These prospective scenarios generate probability distributions associated with the flows of graphene within the lifecycle of three product categories: batteries, tires, and construction, and potential releases to the environment, at the European level (EU27, Norway, the United Kingdom, and Switzerland) from 2014 to 2050 with yearly intervals.
+These three prospective scenarios generate probability distributions associated with the flows of graphene within the lifecycle of three product categories: batteries, tires, and construction, and potential releases to the environment, at the European level (EU27, Norway, the United Kingdom, and Switzerland) from 2014 to 2050 with yearly intervals. 
 
 The tool is written using the DPMFA Python package (github.com/empa-tsl/dpmfa), consisting of:
 * Components.py: the different classes of compartments and flows are defined;
@@ -17,3 +17,5 @@ The tool is written using the DPMFA Python package (github.com/empa-tsl/dpmfa), 
 Each DPMFA_graphene_TBC_model_S.py takes as input a CSV file containing the probability distributions of the produced amounts of graphene in each year in the corresponding product categories: "for_py_graphene_TBC.csv"
 
 For further details on each scenario, the user is referred to the publication above.
+
+Additionally, it includes a Local Sensitivity Analysis using differentials to test specific assumptions and evaluate their impact on the results in the Waste-as-Usual and the Circular Economy-oriented scenarios (compared to the corresponding base scenarios). The analysis uses direct differential sensitivity analysis to assess the robustness of DPMFA outputs with respect to variations in individual model parameters using mean parameter values.
