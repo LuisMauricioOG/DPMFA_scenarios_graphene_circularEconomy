@@ -26,6 +26,8 @@ import pandas as pd
 import matplotlib.ticker as ticker
 import csv
 import Cumulative_sum_script as cs
+from datetime import datetime
+import re
 
 
 # In[3]:
@@ -34,8 +36,15 @@ t = time.strftime("%Y-%m-%d-%H-%M_%S")
 tYear = str(startYear + Speriod)
 
 # Sensitivity-analysis output root
-RESULTS_ROOT = r"C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\20260622_SensitivityAnalysis_results\\_raw_runner_outputs"
+PROJECT_ROOT = r"C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE"
 
+RUN_DATE = datetime.now().strftime("%Y%m%d")
+
+RESULTS_ROOT = os.path.join(
+    PROJECT_ROOT,
+    f"{RUN_DATE}_SensitivityAnalysis_results",
+    "_raw_runner_outputs"
+)
 SCENARIO_LABEL = "S1"
 VARIANT_LABEL = "TiresRec_high"
 
@@ -44,6 +53,9 @@ dirsname = os.path.join(
     RESULTS_ROOT,
     f"{SCENARIO_LABEL}_{VARIANT_LABEL}_{t}_{tYear}"
 )
+
+os.makedirs(RESULTS_ROOT, exist_ok=True)
+os.makedirs(dirsname, exist_ok=True)
 
 print("dirsname: " + dirsname)
 
@@ -68,10 +80,8 @@ def clean_filename(text):
     Make compartment names safe for Windows filenames.
     """
     text = str(text)
-    for char in ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '&']:
-        text = text.replace(char, '_')
-    text = text.replace(' ', '_')
-    return text
+    text = re.sub(r'[^A-Za-z0-9._-]', '_', text)
+    return text[:60]   # limit filename length
 
 
 def export_cumulative_sink_results(
@@ -165,8 +175,10 @@ def export_cumulative_sink_results(
         cumulative_df = pd.DataFrame(cumulative_full, columns=years)
 
         raw_filename = (
-            f"Results_SinkCumulativeDynamic_"
-            f"{clean_filename(sink_name)}_{scenario_label}_{cumulative_period_label}_{t}.csv"
+            f"CumSink_"
+            f"{clean_filename(sink_name)}_"
+            f"{scenario_label}_"
+            f"{cumulative_period_label}.csv"
         )
 
         cumulative_df.to_csv(
@@ -504,11 +516,13 @@ for Comp in Comp_with_loggedOutflows: # loggedOutflows is the compartment list o
        # Saving raw data
         print(value[:,Speriod])
         raw = value[:, Speriod] 
-        raw_dir = os.path.join(dirsname, "Flows_txt", f"RawData_{SCENARIO_LABEL}_{VARIANT_LABEL}")
+        raw_dir = os.path.join(dirsname, "Raw")        
         os.makedirs(raw_dir, exist_ok=True)
 
-        raw_filename = clean_filename(f"{Comp.name}_TO_{str(Target_name)}") + ".txt"
-
+        raw_filename = clean_filename(
+            f"{Comp.name}_TO_{Target_name}"
+        )[:60] + ".txt"
+        
         np.savetxt(
             os.path.join(raw_dir, raw_filename),
             raw,
