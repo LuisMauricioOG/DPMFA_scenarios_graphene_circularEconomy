@@ -99,7 +99,6 @@ RESULTS_ROOT = PROJECT_ROOT / f"{RUN_DATE}_SensitivityAnalysis_results"
 # The master script checks all candidate raw-output folders after each run.
 RAW_RUNNER_OUTPUT_DIRS = [
     RESULTS_ROOT / "_raw_runner_outputs",
-    PROJECT_ROOT / "20260622_SensitivityAnalysis_results" / "_raw_runner_outputs",
 ]
 
 SCENARIOS_TO_RUN = ["S1", "S3"]
@@ -297,8 +296,8 @@ def format_seconds(seconds: float) -> str:
 def discover_runner_jobs() -> List[Dict[str, Any]]:
     """
     Discover runner scripts from:
-        SensitivityAnalysis_runs/S1_SA
-        SensitivityAnalysis_runs/S3_SA
+        SensitivityAnalysis_runs\S1_SA
+        SensitivityAnalysis_runs\S3_SA
 
     Expected filename pattern:
         DPMFA_graphene_TBC_runner_S1_base.py

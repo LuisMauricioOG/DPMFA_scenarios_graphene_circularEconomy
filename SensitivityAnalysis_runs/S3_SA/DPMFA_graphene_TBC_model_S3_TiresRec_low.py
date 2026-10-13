@@ -973,9 +973,9 @@ battW_Recycling_case1.transfers = [cp.StochasticTransfer(nr.triangular, [0.105, 
                                   ]
 
 
-# Assuming that Direct recycling would have 10% of the collected batteries in Recycling (L.D.)
+# Assuming that Direct recycling would have 20% of the collected batteries in Recycling (L.D.)
 battW_Recycling_case2.transfers = [cp.ConstTransfer(1, battW_HydroLeaching_like, priority=1),
-                                   cp.StochasticTransfer(nr.triangular, [0.05, 0.1, 0.15], battW_DirectRecycling, priority=2)
+                                   cp.StochasticTransfer(nr.triangular, [0.1, 0.2, 0.3], battW_DirectRecycling, priority=2)
                                   ]
 
 

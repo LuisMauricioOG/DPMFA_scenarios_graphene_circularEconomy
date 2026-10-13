@@ -133,34 +133,47 @@ def find_latest_sensitivity_workbook() -> Path:
     if SENSITIVITY_WORKBOOK is not None:
         path = Path(SENSITIVITY_WORKBOOK)
         if not path.exists():
-            raise FileNotFoundError(f"SENSITIVITY_WORKBOOK does not exist: {path}")
+            raise FileNotFoundError(
+                f"SENSITIVITY_WORKBOOK does not exist: {path}"
+            )
         return path
 
     candidate_patterns = []
 
     # 1) Today/current result folder first.
     candidate_patterns.append(
-        PREFERRED_RESULTS_ROOT / "_sensitivity_comparison_tables" / "DPMFA_sensitivity_comparison_ALL_*.xlsx"
+        PREFERRED_RESULTS_ROOT
+        / "_sensitivity_comparison_tables"
+        / "DPMFA_sensitivity_comparison_ALL_*.xlsx"
     )
 
     # 2) Any dated sensitivity-analysis result folder.
     candidate_patterns.append(
-        PROJECT_ROOT / "*_SensitivityAnalysis_results" / "_sensitivity_comparison_tables" / "DPMFA_sensitivity_comparison_ALL_*.xlsx"
+        PROJECT_ROOT
+        / "*_SensitivityAnalysis_results"
+        / "_sensitivity_comparison_tables"
+        / "DPMFA_sensitivity_comparison_ALL_*.xlsx"
     )
 
     candidates: List[Path] = []
+
     for pattern in candidate_patterns:
         candidates.extend(pattern.parent.glob(pattern.name))
 
-    candidates = [p for p in candidates if p.exists() and p.is_file()]
+    candidates = [
+        p for p in candidates
+        if p.exists() and p.is_file()
+    ]
+
     if not candidates:
         raise FileNotFoundError(
-            "No DPMFA_sensitivity_comparison_ALL_*.xlsx workbook found. "
-            "Run the main LSA workflow first, or set SENSITIVITY_WORKBOOK manually."
+            "No DPMFA_sensitivity_comparison_ALL_*.xlsx workbook found."
         )
 
-    return max(candidates, key=lambda p: p.stat().st_mtime)
-
+    return max(
+            candidates,
+            key=lambda p: p.stat().st_mtime
+        )
 
 def infer_results_root_from_workbook(workbook: Path) -> Path:
     # Expected:
