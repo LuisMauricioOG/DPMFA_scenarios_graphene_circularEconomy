@@ -20,7 +20,14 @@ Note: retrospective mass flows from the market entry year (i.e., batteries in 20
 import sys
 import os
 
-project_path = r'C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE\ProspectiveMFA_scenarios'
+from pathlib import Path
+
+# Folder with the shared modules (components.py, Model.py, ...) and the input file
+# for_py_graphene_TBC.csv, i.e. the repository root. It is detected automatically
+# (this script's folder, or one/two levels above it); no editing needed.
+_HERE = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
+project_path = str(next((p for p in (_HERE, _HERE.parent, _HERE.parent.parent)
+                         if (p / 'for_py_graphene_TBC.csv').exists()), _HERE))
 
 if project_path not in sys.path:
     sys.path.insert(0, project_path)
@@ -269,7 +276,7 @@ compartmentList = [totalInflow, production, manufacture, consumption,
 model.setCompartments(compartmentList)
 
 # Load production data
-productionData_TBC = pd.read_csv('C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\ProspectiveMFA_scenarios\\inputData\\for_py_graphene_TBC.csv', header=0) 
+productionData_TBC = pd.read_csv(Path(project_path) / 'for_py_graphene_TBC.csv', header=0) 
 # 2014 -> 2050
 # From production data, set as inflow
 productionData_TBC_EU = productionData_TBC.values
@@ -794,7 +801,7 @@ CivilEng.transfers = [cp.ConstTransfer(1, EoW_alternatives, priority=1)]
 # Total among the 3 (mean) = CementFill + Pyrolysis + DockFenders = 0.1756 + 0.0065 + 0.0217 = 0.2038. Meaning that from that amount, to CementFill = 0.1756/0.2038 = 0.8617, to Pyrolysis = 0.0065/0.2038 = 0.0319, and to DockFenders = 0.0217/0.2038 = 0.1064 (%))   
 # If 1 - 0.955 (+/- 20%) = 0.045 (0.036 - 0.054), then the total amount of tiresW_Recycling = 0.045, and the amount to CementFill = 0.045*0.8617 = 0.0388, to Pyrolysis = 0.045*0.0319 = 0.0014, and to DockFenders = 0.045*0.1064 = 0.0048                                 
 tiresW_Recycling.transfers = [cp.ConstTransfer(1, tiresW_MechanicalRecycling_like, priority=1),
-                              cp.StochasticTransfer(nr.triangular,[0.022, 0.04, 0.058], cementFill, priority=2), #Process not further investigated
+                              cp.StochasticTransfer(nr.triangular,[0.022, 0.0388, 0.058], cementFill, priority=2), #Process not further investigated
                               cp.StochasticTransfer(nr.triangular,[0.0008, 0.0014, 0.002], Pyrolysis, priority=2),
                               cp.StochasticTransfer(nr.triangular,[0.0027, 0.0048, 0.0069],  DockFenders, priority=2) #Process not further investigated
                              ]

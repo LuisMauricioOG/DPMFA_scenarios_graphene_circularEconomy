@@ -35,12 +35,19 @@ t = time.strftime("%Y-%m-%d-%H-%M_%S")
 tYear = str(startYear + Speriod)
 
 # Sensitivity-analysis output root
-PROJECT_ROOT = r"C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE"
+# Output root for all results. Default: <repository>/results_runner (git-ignored).
+# Set the environment variable DPMFA_OUTPUT_ROOT to write somewhere else.
+# LocalSensitivityAnalysis_S1_S3.py uses the same rule, so runners and master script agree.
+_HERE = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+OUTPUT_ROOT = os.environ.get(
+    "DPMFA_OUTPUT_ROOT",
+    os.path.join(os.path.dirname(os.path.dirname(_HERE)), "results_runner"),
+)
 
 RUN_DATE = datetime.now().strftime("%Y%m%d")
 
 RESULTS_ROOT = os.path.join(
-    PROJECT_ROOT,
+    OUTPUT_ROOT,
     f"{RUN_DATE}_SensitivityAnalysis_results",
     "_raw_runner_outputs"
 )
