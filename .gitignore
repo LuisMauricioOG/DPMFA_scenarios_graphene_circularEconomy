@@ -10,3 +10,5 @@ __pycache__/
 
 # VS Code
 .vscode/
+# Model outputs (large, regenerate by running the scripts)
+results_runner/

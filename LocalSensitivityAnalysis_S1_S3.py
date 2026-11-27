@@ -1,51 +1,83 @@
 # -*- coding: utf-8 -*-
 """
-Prospective DPMFA Local Sensitivity Analysis (direct differential sensitivity analysis ) for S1 (Waste-as-Usual) and S3 (Circular Economy-oriented)
+Prospective DPMFA local sensitivity analysis (finite-difference, normalized) for
+S1 (Waste-as-Usual) and S3 (Circular Economy-oriented).
 @author: Luis Mauricio Ortiz-Galvez (with help of ChatGPT 5.5)
 
-Based on Bornhöft, N.A., Nowack, B. & Hilty, L.M. (2021).
-Representation, Propagation, and Interpretation of Uncertain Knowledge in Dynamic Probabilistic Material Flow Models.
-Environ Model Assess 26, 709–721. https://doi.org/10.1007/s10666-021-09775-5
+Inspired by Bornhoft, N.A., Nowack, B. & Hilty, L.M. (2021).
+Representation, Propagation, and Interpretation of Uncertain Knowledge in Dynamic
+Probabilistic Material Flow Models. Environ Model Assess 26, 709-721.
+https://doi.org/10.1007/s10666-021-09775-5
+(The method here is a finite-difference normalized sensitivity on Monte Carlo
+mean outputs; it is not identical to the one in that paper.)
 
 
+What the script calculates
+--------------------------
+For every scenario (S1, S3), sensitivity variant, sink compartment, and indicator:
 
-Purpose
+  1) Per-run outputs. Each Monte Carlo run gives one value per indicator:
+       - cumulative = sum over years per run (2014-2050 and 2025-2050), or
+       - annual     = the value of one year (2030, 2040, 2050).
+     Base and variant runs are paired by run index (all runners use seed 2250, but
+     pairing is only approximate: a variant that changes a distribution or the number
+     of random draws shifts the random stream). Only finite pairs are used.
+
+  2) Relative change of the means (main output figure):
+         %Delta output = (mean_variant - mean_base) / mean_base * 100
+     This is a ratio of means, not a mean of ratios.
+
+  3) Run-level spread (supporting only): per-run relative change
+     (variant - base) / base for runs with base != 0; mean, median, Q5, Q95 and a
+     flag for whether Q5-Q95 crosses zero.
+
+  4) Normalized sensitivity coefficient (secant between baseline and ONE perturbed
+     point, not a derivative):
+         S = %Delta output / %Delta input
+     where %Delta input is the RELATIVE change (variant - base) / base * 100 of the
+     perturbed transfer coefficient (TC), using its effective mean. Transfer
+     coefficients are normalized per compartment, so changing one TC rebalances its
+     sibling transfers; S is the response to "one TC changed, siblings compensate".
+
+Input changes (%Delta input) per variant
+----------------------------------------
+  - Tires/Hyd_loss +-20 %             : S defined, |%Delta input| = 20.
+  - BattDirRec_low                     : -60 % (TC 1 -> 0.40).
+  - BattDirRec_high                    : nominal TC 0.95 (-5 %), but the sampled TC is
+        a triangular distribution truncated at 1; its effective mean is ~0.82
+        (-17.8 %). Two input profiles exist ("original" = -5 %, "corrected" = -17.8 %).
+  - Hyd_loss_50                        : TC 0.09 -> 0.50 (+455.6 %); S is a secant over
+        a very wide range and is not comparable with the +-20 % values.
+  - Hyd_loss_100                       : TC = 1 (limiting case); no S, relative change only.
+  - Allocation variants (BattW2Lf, BattRec_Unk2Lf, BattW_RecRes2Lf): structural change
+        of fate, no scalar input change -> no S, relative change only.
+  - BattWDism_dynamic                  : a yearly TC trajectory, not one scalar -> no
+        cumulative S; an annual S(t) is derived from the extracted TC trajectories
+        (S(t) = %Delta annual mean output / %Delta TC in that year; NaN in years in
+        which base and variant TC are identical).
+
+Views (see VIEWS): profile (original / corrected) x Hyd_loss variant set. The table is
+computed once; each view recomputes %Delta input and S from stored values.
+All views (A-F) produce the same set of outputs.
+
+Outputs
 -------
-1) build mean-based local-sensitivity tables:
-   - mean cumulative sink values
-   - relative change of means
-   - paired run-level Q5-Q95 relative-change interval
-   - normalized sensitivity ratio where input_change_pct is defined
-
-2) create:
-   - Excel sensitivity table
-   - Sensitivity heatmap matrices
-   - tornado ranking plots for ±20% scalar TC variants
-   - annual sensitivity tables for selected sinks in 2030 and 2050
-   - cumulative sink bubble maps for 2014-2050
-   - S1 BattWDism_dynamic annual output-response curves
-   - S1 BattWDism_dynamic annual normalized S(t), using TC values extracted from model files
-   - cross-scenario S1_BattWDism_dynamic vs S3_base comparison,
-     using S1_BattWDism_dynamic as the reference.
-
-Important methodological note
------------------------------
-The normalized local sensitivity coefficient is calculated only when the input
-change is a scalar percentage change:
-
-    S = (%Delta output) / (%Delta input)
-
-Allocation variants and dynamic trajectory variants are still evaluated as
-output-side changes, but not as scalar normalized sensitivity ratios unless
-an effective input change is explicitly available.
-For BattWDism_dynamic, this script extracts the yearly TC trajectory from the
-S1 model files and calculates an optional annual S(t).
+  - Excel sensitivity table (all_results, summary_compact, views_definition, view_A..F)
+  - Normalized sensitivity heatmaps (cumulative 2014-2050, S per variant and sink)
+  - Tornado ranking: variants with |%Delta input| <= 20 %, ranked by the largest |S|
+    across EoW_alternatives, Landfill, Elimination and Unknown
+  - Annual sensitivity tables (2030, 2050; Landfill, EoW_alternatives, Unknown, Elimination)
+  - Cumulative sink bubble maps 2014-2050 (relative change of means)
+  - S1 BattWDism_dynamic annual output response and S(t)
+  - Cross-scenario comparison S1_BattWDism_dynamic (reference) vs S3_base; this is a
+    diagnostic difference of means, not a sensitivity coefficient.
 """
 
 from __future__ import annotations
 
 import ast
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -62,8 +94,12 @@ import matplotlib.pyplot as plt
 # Publication-style plotting defaults. Arial is attempted first; common fallbacks
 # are used if Arial is not installed on the system running the script.
 plt.rcParams.update({
-    "font.family": "sans-serif",
+    "font.family": "Arial",   # falls back to Liberation Sans / DejaVu Sans if Arial is missing
     "font.sans-serif": ["Arial", "Liberation Sans", "DejaVu Sans"],
+    "mathtext.fontset": "custom",
+    "mathtext.rm": "Arial",
+    "mathtext.it": "Arial:italic",
+    "mathtext.bf": "Arial:bold",
     "font.size": 9,
     "axes.titlesize": 11,
     "axes.labelsize": 10,
@@ -79,21 +115,21 @@ plt.rcParams.update({
 # 1. USER SETTINGS
 # =============================================================================
 
-PROJECT_ROOT = Path(
-    r"C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE"
-)
+# Repository root = the folder that contains this script (and SensitivityAnalysis_runs/).
+REPO_ROOT = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
 
-RUNS_SOURCE_ROOT = (
-    PROJECT_ROOT
-    / "ProspectiveMFA_scenarios"
-    / "Extended_DPMFA_scenarios_graphene"
-    / "SensitivityAnalysis_runs"
-)
+# Where results are written. Default: <repository>/results_runner (git-ignored).
+# Set the environment variable DPMFA_OUTPUT_ROOT to write somewhere else.
+# The runner scripts use the same rule, so runners and this master script agree.
+OUTPUT_ROOT = Path(os.environ.get("DPMFA_OUTPUT_ROOT", REPO_ROOT / "results_runner"))
+
+# Folder with the S1_SA / S3_SA variant scripts that this script launches.
+RUNS_SOURCE_ROOT = REPO_ROOT / "SensitivityAnalysis_runs"
 
 RUN_DATE = datetime.now().strftime("%Y%m%d")
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-RESULTS_ROOT = PROJECT_ROOT / f"{RUN_DATE}_SensitivityAnalysis_results"
+RESULTS_ROOT = OUTPUT_ROOT / f"{RUN_DATE}_SensitivityAnalysis_results"
 
 # Some existing runner scripts may still write raw outputs to an old fixed folder.
 # The master script checks all candidate raw-output folders after each run.
@@ -211,13 +247,35 @@ SAVE_DPI = 600
 # 2. INPUT-CHANGE METADATA
 # =============================================================================
 
-def infer_input_change_pct(scenario: str, variant: str) -> Optional[float]:
+# Baseline battW_HydroLeaching -> battW_losses transfer coefficient.
+HYD_BASE_TC = 0.09
+
+# BattDirRec_high: the model uses TriangTruncDet([0.475, 0.95, 1.425], truncated to <= 1).
+# The nominal change is (0.95-1)/1 = -5 %, but truncation at 1 shifts the *effective*
+# sampled mean to ~0.822 (analytic mean of the triangular distribution truncated at 1),
+# i.e. an effective input change of ~ -17.8 %.
+BATTDIRREC_HIGH_EFFECTIVE_CHANGE_PCT = -17.79
+
+PROFILE_ORIGINAL = "original"    # nominal input changes (BattDirRec_high = -5 %)
+PROFILE_CORRECTED = "corrected"  # effective input changes (BattDirRec_high ~ -17.8 %)
+
+
+def infer_input_change_pct(
+    scenario: str,
+    variant: str,
+    profile: str = PROFILE_ORIGINAL,
+) -> Optional[float]:
     """
     Input-change convention:
         input_change_pct = ((variant input - baseline input) / baseline input) * 100
 
     Use None when the variant is structural, categorical, or time-dependent
     without one scalar perturbation.
+
+    profile:
+        "original"  -> nominal values (BattDirRec_high = -5).
+        "corrected" -> BattDirRec_high uses the effective (post-truncation) change.
+        All other variants are identical in both profiles.
     """
     v = variant.lower()
 
@@ -251,9 +309,92 @@ def infer_input_change_pct(scenario: str, variant: str) -> Optional[float]:
     if scenario == "S3" and v == "battdirrec_low":
         return -60.0
     if scenario == "S3" and v == "battdirrec_high":
+        if profile == PROFILE_CORRECTED:
+            return BATTDIRREC_HIGH_EFFECTIVE_CHANGE_PCT
         return -5.0
 
+    # Hydrometallurgical-leaching losses TC (battW_HydroLeaching -> battW_losses).
+    # +-20 % variants behave like the tire variants (same in both profiles).
+    if v == "hyd_loss_high":
+        return 20.0
+    if v == "hyd_loss_low":
+        return -20.0
+    # Extended-range case: TC 0.09 -> 0.50 (+455.6 %). A secant S over this range
+    # is not comparable with the +-20 % values; it is only shown as a tagged bar.
+    if v == "hyd_loss_50":
+        return (0.50 - HYD_BASE_TC) / HYD_BASE_TC * 100.0
+    # Hyd_loss_100 (TC = 1.0) is a limiting/allocation-style case: relative change only.
+    if v == "hyd_loss_100":
+        return None
+
     return None
+
+
+# =============================================================================
+# 2b. VIEWS (profile x Hyd_loss variant set)
+# =============================================================================
+# The sensitivity table is simulated/computed ONCE. Each view re-derives
+# input_change_pct and S from the stored relative changes (no re-simulation).
+
+HYD_VARIANTS_ALL = ["Hyd_loss_high", "Hyd_loss_low", "Hyd_loss_50", "Hyd_loss_100"]
+HYD_PM20 = ["Hyd_loss_high", "Hyd_loss_low"]
+
+# "full": tornado + heatmaps + bubble maps + annual tables
+# (all views currently use "full"; "bubble_tornado" = bubble maps + tornado only)
+VIEWS: Dict[str, Dict[str, Any]] = {
+    "A": {"profile": PROFILE_ORIGINAL,  "hyd": [],            "outputs": "full"},
+    "B": {"profile": PROFILE_CORRECTED, "hyd": [],            "outputs": "full"},
+    "C": {"profile": PROFILE_ORIGINAL,  "hyd": HYD_PM20,      "outputs": "full"},
+    "D": {"profile": PROFILE_CORRECTED, "hyd": HYD_PM20,      "outputs": "full"},
+    "E": {"profile": PROFILE_ORIGINAL,  "hyd": HYD_VARIANTS_ALL, "outputs": "full"},
+    "F": {"profile": PROFILE_CORRECTED, "hyd": HYD_VARIANTS_ALL, "outputs": "full"},
+}
+
+# Tornado rule: only variants with |input change| <= 20 % (the +-20 % variants, or
+# anything within that range, e.g. BattDirRec_high at -5 % / -17.8 %). Variants outside
+# the range (BattDirRec_low -60 %, Hyd_loss_50 +456 %) are NOT in the tornado.
+# The sets below are kept empty (switches for explicit exceptions / tagged extended bars).
+TORNADO_MAX_ABS_INPUT_CHANGE_PCT = 20.0
+TORNADO_EXPLICIT_ALLOW: set = set()
+TORNADO_EXTENDED_RANGE: set = set()
+
+
+def view_folder_name(key: str) -> str:
+    spec = VIEWS[key]
+    hyd = {0: "noHyd", 2: "HydPM20", 4: "HydAll"}[len(spec["hyd"])]
+    return f"view_{key}_{spec['profile']}_{hyd}"
+
+
+def apply_view(df: pd.DataFrame, key: str) -> pd.DataFrame:
+    """Return a copy of the sensitivity table for one view (no re-simulation)."""
+    spec = VIEWS[key]
+    out = df.copy()
+
+    is_hyd = out["variant"].astype(str).str.lower().str.startswith("hyd_loss_")
+    keep_hyd = out["variant"].isin(spec["hyd"])
+    out = out[~is_hyd | keep_hyd].copy()
+
+    out["input_change_pct"] = [
+        infer_input_change_pct(s, v, spec["profile"])
+        for s, v in zip(out["scenario"], out["variant"])
+    ]
+    inp = pd.to_numeric(out["input_change_pct"], errors="coerce")
+    valid = inp.notna() & (inp != 0)
+    out["sensitivity_ratio_available"] = valid
+    out["sensitivity_ratio_mean"] = np.where(valid, out["relative_change_of_means_pct"] / inp, np.nan)
+    out["sensitivity_ratio_median"] = np.where(valid, out["median_relative_change_pct"] / inp, np.nan)
+
+    out["rank_by_abs_mean_effect"] = (
+        out.groupby(["scenario", "output", "indicator"])["abs_relative_change_of_means_pct"]
+        .rank(method="dense", ascending=False)
+    )
+    out["rank_by_abs_sensitivity_ratio"] = (
+        out.groupby(["scenario", "output", "indicator"])["sensitivity_ratio_mean"]
+        .transform(lambda s: s.abs().rank(method="dense", ascending=False))
+    )
+    out.insert(0, "view", key)
+    out.insert(1, "input_profile", spec["profile"])
+    return out
 
 
 # =============================================================================
@@ -783,9 +924,32 @@ def save_sensitivity_table(df: pd.DataFrame) -> Path:
         "rank_by_abs_sensitivity_ratio",
     ]
 
+    # 'all_results' and 'summary_compact' stay as before (Postprocess_LSA_S1_S3.py reads
+    # all_results). The view sheets are additional.
+    views_def = pd.DataFrame([
+        {
+            "view": k,
+            "sheet": f"view_{k}",
+            "input_profile": spec["profile"],
+            "BattDirRec_high_input_change_pct": (
+                BATTDIRREC_HIGH_EFFECTIVE_CHANGE_PCT if spec["profile"] == PROFILE_CORRECTED else -5.0
+            ),
+            "hyd_loss_variants_included": ", ".join(spec["hyd"]) if spec["hyd"] else "none",
+            "outputs": spec["outputs"],
+            "folder": view_folder_name(k),
+        }
+        for k, spec in VIEWS.items()
+    ])
+
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="all_results", index=False)
         df[compact_cols].to_excel(writer, sheet_name="summary_compact", index=False)
+        views_def.to_excel(writer, sheet_name="views_definition", index=False)
+        for k in VIEWS:
+            vdf = apply_view(df, k)
+            vdf[["view", "input_profile"] + compact_cols].to_excel(
+                writer, sheet_name=f"view_{k}", index=False
+            )
 
     print(f"Saved sensitivity table: {path}")
     return path
@@ -795,11 +959,13 @@ def save_sensitivity_table(df: pd.DataFrame) -> Path:
 # 5. BORNHOFT-STYLE HEATMAP AND TORNADO PLOTS
 # =============================================================================
 
-def make_normalized_sensitivity_heatmap_excel(df: pd.DataFrame) -> Path:
-    output_dir = RESULTS_ROOT / "_normalized_sensitivity_outputs"
+def make_normalized_sensitivity_heatmap_excel(
+    df: pd.DataFrame, output_dir: Optional[Path] = None, tag: str = ""
+) -> Path:
+    output_dir = output_dir or (RESULTS_ROOT / "_normalized_sensitivity_outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    path = output_dir / f"Normalized_TC_sensitivity_heatmaps_{TIMESTAMP}.xlsx"
+    path = output_dir / f"Normalized_TC_sensitivity_heatmaps{tag}_{TIMESTAMP}.xlsx"
 
     subset = df[
         (df["indicator"] == "cumulative_full_boundary_2014_2050")
@@ -830,8 +996,10 @@ def make_normalized_sensitivity_heatmap_excel(df: pd.DataFrame) -> Path:
     return path
 
 
-def plot_heatmaps(df: pd.DataFrame) -> None:
-    output_dir = RESULTS_ROOT / "_normalized_sensitivity_outputs"
+def plot_heatmaps(
+    df: pd.DataFrame, output_dir: Optional[Path] = None, tag: str = "", title_suffix: str = ""
+) -> None:
+    output_dir = output_dir or (RESULTS_ROOT / "_normalized_sensitivity_outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     subset = df[
@@ -872,7 +1040,7 @@ def plot_heatmaps(df: pd.DataFrame) -> None:
         ax.set_yticklabels(matrix.index)
         ax.set_xlabel("Sink compartment")
         ax.set_ylabel("Scalar TC variant")
-        ax.set_title(f"{scenario}: Normalized local sensitivity coefficient")
+        ax.set_title(f"{scenario}: Normalized local sensitivity coefficient{title_suffix}")
 
         for i in range(vals.shape[0]):
             for j in range(vals.shape[1]):
@@ -881,18 +1049,42 @@ def plot_heatmaps(df: pd.DataFrame) -> None:
                     ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=7)
 
         cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label("S = (%Δ mean cumulative sink flow) / (%Δ TC)")
+        cbar.set_label("S", rotation=0, labelpad=10, va="center")
+        fig.text(
+            0.5, -0.01,
+            "S = (% change of mean cumulative sink flow 2014–2050) / "
+            "(% change of the perturbed transfer coefficient)",
+            ha="center", va="top", fontsize=7,
+        )
 
         fig.tight_layout()
         for ext in ["png", "pdf", "svg"]:
-            out = output_dir / f"normalized_TC_sensitivity_heatmap_{scenario}.{ext}"
+            out = output_dir / f"normalized_TC_sensitivity_heatmap_{scenario}{tag}.{ext}"
             fig.savefig(out, dpi=SAVE_DPI if ext == "png" else None, bbox_inches="tight")
             print(f"Saved: {out}")
         plt.close(fig)
 
 
-def plot_tornado_rankings(df: pd.DataFrame) -> None:
-    output_dir = RESULTS_ROOT / "_normalized_sensitivity_outputs"
+def plot_tornado_rankings(
+    df: pd.DataFrame,
+    output_dir: Optional[Path] = None,
+    tag: str = "",
+    title_suffix: str = "",
+    allow_extended_range: bool = False,
+) -> None:
+    """
+    Tornado of the dominant normalized sensitivity coefficient per variant.
+
+    Ranking is by max |S| across the selected sinks (not by output change).
+
+    Allow-list: |input change| == 20 % (TORNADO_ONLY_ABS_20_PERCENT), plus the
+    variants in TORNADO_EXPLICIT_ALLOW (BattDirRec_high/low; truncation at TC = 1
+    prevents a +-20 % perturbation, so they are labelled with their real input
+    change). With allow_extended_range=True, TORNADO_EXTENDED_RANGE variants
+    (Hyd_loss_50) are added as hatched, tagged bars: their secant S spans a much
+    larger range and is not comparable with the +-20 % values.
+    """
+    output_dir = output_dir or (RESULTS_ROOT / "_normalized_sensitivity_outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     subset = df[
@@ -902,7 +1094,11 @@ def plot_tornado_rankings(df: pd.DataFrame) -> None:
     ].copy()
 
     if TORNADO_ONLY_ABS_20_PERCENT:
-        subset = subset[np.isclose(subset["input_change_pct"].abs(), 20.0)].copy()
+        keep = subset["input_change_pct"].abs() <= TORNADO_MAX_ABS_INPUT_CHANGE_PCT + 1e-9
+        keep |= subset["variant"].isin(TORNADO_EXPLICIT_ALLOW)
+        if allow_extended_range:
+            keep |= subset["variant"].isin(TORNADO_EXTENDED_RANGE)
+        subset = subset[keep].copy()
 
     for scenario in sorted(subset["scenario"].unique()):
         ssub = subset[subset["scenario"] == scenario].copy()
@@ -914,12 +1110,14 @@ def plot_tornado_rankings(df: pd.DataFrame) -> None:
         for variant, group in ssub.groupby("variant"):
             idx = group["sensitivity_ratio_mean"].abs().idxmax()
             dominant = group.loc[idx]
+            d_in = float(dominant["input_change_pct"])
             rows.append({
                 "variant": variant,
                 "max_abs_S": float(abs(dominant["sensitivity_ratio_mean"])),
                 "dominant_signed_S": float(dominant["sensitivity_ratio_mean"]),
                 "dominant_sink": dominant["output_label"],
-                "input_change_pct": dominant["input_change_pct"],
+                "input_change_pct": d_in,
+                "extended_range": bool(variant in TORNADO_EXTENDED_RANGE),
             })
 
         rank_df = pd.DataFrame(rows).sort_values("max_abs_S", ascending=True)
@@ -927,23 +1125,36 @@ def plot_tornado_rankings(df: pd.DataFrame) -> None:
             continue
 
         fig_h = max(3.2, 0.45 * len(rank_df) + 1.8)
-        fig, ax = plt.subplots(figsize=(8.0, fig_h))
+        fig, ax = plt.subplots(figsize=(8.8, fig_h))
 
         y = np.arange(len(rank_df))
-        ax.barh(y, rank_df["dominant_signed_S"])
+        bars = ax.barh(y, rank_df["dominant_signed_S"])
+        for bar, ext in zip(bars, rank_df["extended_range"]):
+            if ext:
+                bar.set_hatch("//")
+                bar.set_alpha(0.6)
         ax.axvline(0, color="black", linewidth=0.8)
 
-        labels = [
-            f"{row.variant} ({row.dominant_sink})"
-            for row in rank_df.itertuples(index=False)
-        ]
+        labels = []
+        for row in rank_df.itertuples(index=False):
+            lab = f"{row.variant} ({row.dominant_sink})"
+            if row.extended_range:
+                lab += f" † Δinput {row.input_change_pct:+.0f}%"
+            elif not np.isclose(abs(row.input_change_pct), 20.0):
+                lab += f" [Δinput {row.input_change_pct:+.1f}%]"
+            labels.append(lab)
         ax.set_yticks(y)
         ax.set_yticklabels(labels)
         ax.set_xlabel("Dominant normalized sensitivity coefficient, S")
         ax.set_title(
-            f"{scenario}: tornado ranking of scalar TC variants"
-            + (" (±20% only)" if TORNADO_ONLY_ABS_20_PERCENT else "")
+            f"{scenario}: tornado ranking of scalar TC variants{title_suffix}"
         )
+        if rank_df["extended_range"].any():
+            ax.text(
+                0.99, 0.01,
+                "† extended-range secant (not comparable with ±20% values)",
+                transform=ax.transAxes, ha="right", va="bottom", fontsize=7,
+            )
 
         for yi, val in zip(y, rank_df["dominant_signed_S"]):
             ax.text(
@@ -957,15 +1168,14 @@ def plot_tornado_rankings(df: pd.DataFrame) -> None:
 
         fig.tight_layout()
         for ext in ["png", "pdf", "svg"]:
-            out = output_dir / f"scalar_TC_tornado_{scenario}.{ext}"
+            out = output_dir / f"scalar_TC_tornado_{scenario}{tag}.{ext}"
             fig.savefig(out, dpi=SAVE_DPI if ext == "png" else None, bbox_inches="tight")
             print(f"Saved: {out}")
         plt.close(fig)
 
-        rank_path = output_dir / f"scalar_TC_tornado_ranking_{scenario}.csv"
+        rank_path = output_dir / f"scalar_TC_tornado_ranking_{scenario}{tag}.csv"
         rank_df.sort_values("max_abs_S", ascending=False).to_csv(rank_path, index=False)
         print(f"Saved: {rank_path}")
-
 
 
 # =============================================================================
@@ -990,6 +1200,10 @@ def _ordered_scalar_variants(df: pd.DataFrame, scenario: str) -> List[str]:
         "TiresEnRec_low",
         "TiresRec_high",
         "TiresRec_low",
+        "Hyd_loss_high",
+        "Hyd_loss_low",
+        "Hyd_loss_50",
+        "Hyd_loss_100",
     ]
     present = list(sub["variant"].dropna().astype(str).unique())
     ordered = [v for v in preferred if v in present]
@@ -997,7 +1211,9 @@ def _ordered_scalar_variants(df: pd.DataFrame, scenario: str) -> List[str]:
     return ordered
 
 
-def make_annual_sensitivity_tables(df: pd.DataFrame) -> Path:
+def make_annual_sensitivity_tables(
+    df: pd.DataFrame, output_dir: Optional[Path] = None, tag: str = ""
+) -> Path:
     """
     Create annual sensitivity tables for selected sinks and years.
 
@@ -1012,9 +1228,9 @@ def make_annual_sensitivity_tables(df: pd.DataFrame) -> Path:
       3) normalized S coefficients for scalar TC variants only;
       4) baseline annual mean mass flows (t/y).
     """
-    output_dir = RESULTS_ROOT / "_annual_sensitivity_tables"
+    output_dir = output_dir or (RESULTS_ROOT / "_annual_sensitivity_tables")
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"Annual_sink_sensitivity_tables_2030_2050_{TIMESTAMP}.xlsx"
+    path = output_dir / f"Annual_sink_sensitivity_tables_2030_2050{tag}_{TIMESTAMP}.xlsx"
 
     indicators = [f"year_{year}" for year in ANNUAL_TABLE_YEARS]
     subset = df[
@@ -1051,6 +1267,10 @@ def make_annual_sensitivity_tables(df: pd.DataFrame) -> Path:
             "TiresEnRec_low",
             "TiresRec_high",
             "TiresRec_low",
+            "Hyd_loss_high",
+            "Hyd_loss_low",
+            "Hyd_loss_50",
+            "Hyd_loss_100",
         ]
         present = list(ssub["variant"].dropna().astype(str).unique())
         ordered = [v for v in preferred if v in present]
@@ -1124,7 +1344,7 @@ def make_annual_sensitivity_tables(df: pd.DataFrame) -> Path:
             s_scalar = build_wide_table(
                 scenario,
                 value_col="sensitivity_ratio_mean",
-                row_label="S = (%Delta annual mean sink flow) / (%Delta TC)",
+                row_label="S = (%Delta annual mean sink flow) / (%Delta perturbed TC)",
                 scalar_only=True,
                 include_base_row=True,
             )
@@ -1173,6 +1393,10 @@ def _ordered_variants_for_bubble(df: pd.DataFrame, scenario: str) -> List[str]:
         "TiresEnRec_low",
         "TiresRec_high",
         "TiresRec_low",
+        "Hyd_loss_high",
+        "Hyd_loss_low",
+        "Hyd_loss_50",
+        "Hyd_loss_100",
     ]
     present = list(df[df["scenario"] == scenario]["variant"].dropna().astype(str).unique())
     ordered = [v for v in preferred if v in present]
@@ -1180,7 +1404,9 @@ def _ordered_variants_for_bubble(df: pd.DataFrame, scenario: str) -> List[str]:
     return ordered
 
 
-def plot_cumulative_sink_bubble_map(df: pd.DataFrame) -> None:
+def plot_cumulative_sink_bubble_map(
+    df: pd.DataFrame, output_dir: Optional[Path] = None, tag: str = ""
+) -> None:
     """
     Create the main bubble map for cumulative sink changes until 2050.
 
@@ -1196,7 +1422,7 @@ def plot_cumulative_sink_bubble_map(df: pd.DataFrame) -> None:
     """
     from matplotlib.colors import SymLogNorm, TwoSlopeNorm
 
-    output_dir = RESULTS_ROOT / "_cumulative_sink_bubble_maps"
+    output_dir = output_dir or (RESULTS_ROOT / "_cumulative_sink_bubble_maps")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     indicator = "cumulative_full_boundary_2014_2050"
@@ -1284,7 +1510,7 @@ def plot_cumulative_sink_bubble_map(df: pd.DataFrame) -> None:
         cbar = fig.colorbar(last_scatter, cax=cax)
         cbar.set_label("Mean relative change vs baseline (%)")
 
-    stem = "cumulative_sink_bubble_map_2014_2050_all_variants"
+    stem = f"cumulative_sink_bubble_map_2014_2050_all_variants{tag}"
     for ext in ["png", "pdf", "svg"]:
         out = output_dir / f"{stem}.{ext}"
         fig.savefig(out, dpi=SAVE_DPI if ext == "png" else None, bbox_inches="tight")
@@ -1328,7 +1554,7 @@ def plot_cumulative_sink_bubble_map(df: pd.DataFrame) -> None:
         cbar = fig.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
         cbar.set_label("Mean relative change vs baseline (%)")
         fig.tight_layout()
-        stem = f"cumulative_sink_bubble_map_{scenario}_2014_2050"
+        stem = f"cumulative_sink_bubble_map_{scenario}_2014_2050{tag}"
         for ext in ["png", "pdf", "svg"]:
             out = output_dir / f"{stem}.{ext}"
             fig.savefig(out, dpi=SAVE_DPI if ext == "png" else None, bbox_inches="tight")
@@ -1745,6 +1971,28 @@ def make_cross_scenario_comparison() -> None:
         plt.close(fig)
 
 
+def run_all_views(sensitivity_df: pd.DataFrame) -> None:
+    """Figures/tables for each view, in RESULTS_ROOT/_views/<view folder>."""
+    for key, spec in VIEWS.items():
+        vdf = apply_view(sensitivity_df, key)
+        folder = RESULTS_ROOT / "_views" / view_folder_name(key)
+        folder.mkdir(parents=True, exist_ok=True)
+        tag = f"_view{key}"
+        title_suffix = f" [view {key}: {spec['profile']}]"
+        print(f"\n--- View {key}: profile={spec['profile']}, Hyd={spec['hyd'] or 'none'} ---")
+        vdf.to_excel(folder / f"view_{key}_sensitivity_table{tag}.xlsx", index=False)
+
+        plot_cumulative_sink_bubble_map(vdf, output_dir=folder, tag=tag)
+        plot_tornado_rankings(
+            vdf, output_dir=folder, tag=tag, title_suffix=title_suffix,
+            allow_extended_range=(spec["outputs"] == "bubble_tornado"),
+        )
+        if spec["outputs"] == "full":
+            make_normalized_sensitivity_heatmap_excel(vdf, output_dir=folder, tag=tag)
+            plot_heatmaps(vdf, output_dir=folder, tag=tag, title_suffix=title_suffix)
+            make_annual_sensitivity_tables(vdf, output_dir=folder, tag=tag)
+
+
 # =============================================================================
 # 9. MAIN
 # =============================================================================
@@ -1755,7 +2003,7 @@ def main() -> None:
     print("\n" + "=" * 80)
     print("MASTER DPMFA LOCAL SENSITIVITY WORKFLOW")
     print("=" * 80)
-    print(f"Project root:        {PROJECT_ROOT}")
+    print(f"Output root:         {OUTPUT_ROOT}")
     print(f"Runner source root:  {RUNS_SOURCE_ROOT}")
     print(f"New results root:    {RESULTS_ROOT}")
     print(f"Scenarios:           {SCENARIOS_TO_RUN}")
@@ -1781,18 +2029,24 @@ def main() -> None:
     sensitivity_df = build_sensitivity_table(jobs)
     save_sensitivity_table(sensitivity_df)
 
+    # Legacy output locations = view A (original profile, no Hyd_loss variants).
+    df_A = apply_view(sensitivity_df, "A")
+
     print("\nCreating annual sensitivity tables for 2030 and 2050...")
-    make_annual_sensitivity_tables(sensitivity_df)
+    make_annual_sensitivity_tables(df_A)
 
     print("\nCreating cumulative sink bubble map for 2014-2050...")
-    plot_cumulative_sink_bubble_map(sensitivity_df)
+    plot_cumulative_sink_bubble_map(df_A)
 
     print("\nCreating normalized sensitivity heatmap matrices and plots...")
-    make_normalized_sensitivity_heatmap_excel(sensitivity_df)
-    plot_heatmaps(sensitivity_df)
+    make_normalized_sensitivity_heatmap_excel(df_A)
+    plot_heatmaps(df_A)
+
+    print("\nCreating per-view outputs (A-F)...")
+    run_all_views(sensitivity_df)
 
     print("\nCreating tornado plots for scalar TC variants...")
-    plot_tornado_rankings(sensitivity_df)
+    plot_tornado_rankings(df_A)
 
     print("\nCreating S1 BattWDism_dynamic annual curves...")
     make_dynamic_battery_curves()

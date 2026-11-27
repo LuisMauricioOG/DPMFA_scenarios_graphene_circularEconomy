@@ -20,7 +20,14 @@ Note: retrospective mass flows from the market entry year (i.e., batteries in 20
 import sys
 import os
 
-project_path = r'C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE\ProspectiveMFA_scenarios'
+from pathlib import Path
+
+# Folder with the shared modules (components.py, Model.py, ...) and the input file
+# for_py_graphene_TBC.csv, i.e. the repository root. It is detected automatically
+# (this script's folder, or one/two levels above it); no editing needed.
+_HERE = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
+project_path = str(next((p for p in (_HERE, _HERE.parent, _HERE.parent.parent)
+                         if (p / 'for_py_graphene_TBC.csv').exists()), _HERE))
 
 if project_path not in sys.path:
     sys.path.insert(0, project_path)
@@ -269,7 +276,7 @@ compartmentList = [totalInflow, production, manufacture, consumption,
 model.setCompartments(compartmentList)
 
 # Load production data
-productionData_TBC = pd.read_csv('C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\ProspectiveMFA_scenarios\\inputData\\for_py_graphene_TBC.csv', header=0) 
+productionData_TBC = pd.read_csv(Path(project_path) / 'for_py_graphene_TBC.csv', header=0) 
 # 2014 -> 2050
 # From production data, set as inflow
 productionData_TBC_EU = productionData_TBC.values
@@ -768,7 +775,7 @@ tiresW_preRecycling.transfers = [cp.StochasticTransfer(nr.triangular,[0.3430, 0.
 tiresW_EnergyRec.transfers = [cp.ConstTransfer(1, cementKilns, priority=1),
                               cp.StochasticTransfer(nr.triangular,[0.06075, 0.108, 0.15525], energyRecovery, priority=2),
                              ]
-# Value in Sensitivity Analysis: 0.09 (mean) +/- 20% general uncertainty.
+# Value in Sensitivity Analysis: 0.09 (mean) +/- 20%.
 
 # Hypothesis: (very) high likelihood of release (elimination/transformation). In this case depending on the temperatures, but assuming working temperatures conditions of around 1450°C, 
 #graphene might be transformed = eliminated. Assuming that in the Energy Industry (incineration) compartment, the same hypothesis applies. But more variation in temperature; thus, allocated to WIP (simplification of the model).

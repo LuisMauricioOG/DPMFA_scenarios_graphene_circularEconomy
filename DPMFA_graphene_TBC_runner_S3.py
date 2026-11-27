@@ -16,7 +16,7 @@ Speriod = 36 # specific period for concentrations and Mass-flows
 # from datetime import datetime
 import time
 import os
-import DPMFA_graphene_TBC_model_S3_20251016_final as ScIII_Model # here space is not allowed in model name
+import DPMFA_graphene_TBC_model_S3 as ScIII_Model # here space is not allowed in model name
 import Simulator as sc
 import numpy as np
 import matplotlib.pyplot as plt
@@ -33,7 +33,9 @@ import Cumulative_sum_script as cs
 ## prepare time print for folders
 t = time.strftime("%Y-%m-%d-%H-%M_%S")
 tYear = str(startYear + Speriod)
-dirsname = os.path.join('results_runner', t + "_" + tYear)
+# Results go to <this folder>/results_runner/<timestamp>_<year> (git-ignored).
+_HERE = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
+dirsname = os.path.join(_HERE, 'results_runner', t + "_" + tYear)
 
 print('dirsname' + dirsname)
 if not os.path.exists(dirsname):
@@ -41,7 +43,7 @@ if not os.path.exists(dirsname):
 
 ## prepare function to export csv at the right location
 def withOpen_under_directory(filename, mode, delimiter_setting):
-    with open(dirsname + '\\' + filename + t + '.csv', mode) as RM : #w:write mode, 'a':append mode
+    with open(os.path.join(dirsname, filename + t + '.csv'), mode) as RM : #w:write mode, 'a':append mode
         a = csv.writer(RM, delimiter = delimiter_setting)
         data = np.asarray(Flows)
         a.writerows(data)
@@ -51,7 +53,7 @@ def withOpen_under_directory(filename, mode, delimiter_setting):
 def toCSV_under_directory(dataname, filename, index_value, seperator):
     # index_value = True or False
     # seperator = ',' or ' '
-    dataname.to_csv(dirsname + '\\' + filename + t + '.csv', index = index_value, sep = seperator)
+    dataname.to_csv(os.path.join(dirsname, filename + t + '.csv'), index = index_value, sep = seperator)
 # use example: toCSV_under_directory(Min_To_Sinks_DF_Transp, 'RESULTS_Min to Sinks - UC2', True, ',')
 
 
@@ -92,7 +94,9 @@ for Comp in Comp_with_loggedOutflows: # loggedOutflows is the compartment list o
        # Saving raw data
         print(value[:,Speriod])
         raw = value[:, Speriod] 
-        np.savetxt(f'C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\ProspectiveMFA_scenarios\\results_runner\\2025_10_16_Results\\Flows_txt\\RawData_S3\\{Comp.name}TO{str(Target_name)}.txt',raw,delimiter = ',')
+        raw_dir = os.path.join(dirsname, 'Flows_txt', 'RawData_S3')
+        os.makedirs(raw_dir, exist_ok=True)
+        np.savetxt(os.path.join(raw_dir, f'{Comp.name}TO{str(Target_name)}.txt'),raw,delimiter = ',')
                    
         print('Mean--> ' + str(round(np.mean(value[:,Speriod]),RoundV)))
         print('SD--> ' + str(round(np.std(value[:,Speriod]),RoundV)))

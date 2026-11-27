@@ -17,6 +17,15 @@ DOI: 10.1021/acs.est.2c04002)
 
 Note: retrospective mass flows from the market entry year (i.e., batteries in 2014) to 2025 are considered. EXPLAIN WHY.
 """
+from pathlib import Path
+
+# Folder with the shared modules (components.py, Model.py, ...) and the input file
+# for_py_graphene_TBC.csv, i.e. the repository root. It is detected automatically
+# (this script's folder, or one/two levels above it); no editing needed.
+_HERE = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
+project_path = str(next((p for p in (_HERE, _HERE.parent, _HERE.parent.parent)
+                         if (p / 'for_py_graphene_TBC.csv').exists()), _HERE))
+
 import components as cp
 import numpy.random as nr
 import numpy as np
@@ -259,7 +268,7 @@ compartmentList = [totalInflow, production, manufacture, consumption,
 model.setCompartments(compartmentList)
 
 # Load production data
-productionData_TBC = pd.read_csv('C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\ProspectiveMFA_scenarios\\inputData\\for_py_graphene_TBC.csv', header=0) 
+productionData_TBC = pd.read_csv(Path(project_path) / 'for_py_graphene_TBC.csv', header=0) 
 # 2014 -> 2050
 # From production data, set as inflow
 productionData_TBC_EU = productionData_TBC.values
@@ -762,15 +771,14 @@ tiresW.transfers = [
 ## CHANGE: before as Improper disposal, here as Unknown (based on ETRma (2018), here it represents the sum of Landfill/Unknown + Stocks)
 # In this scenario, unknown dissapeared.
 tiresW_preRecycling.transfers = [cp.ConstTransfer(1, tiresW_MatRecovery, priority=1),
-                              cp.StochasticTransfer(nr.triangular,[0.0405, 0.072, 0.1035], energyRecovery, priority=2),
+                                 cp.StochasticTransfer(nr.triangular,[0.2006, 0.3429,0.4852], tiresW_EnergyRec, priority=2),
                                 ]
 
 
 # From Figure of ETRma's ELTs Report (2016), but not much explanation from where the values come from. Therefore, adding extra conversion factor (+/-30% unc.).
-# Value in Sensitivity Analysis: 0.09 (mean) +/- 20% general uncertainty.
-
+# Value in Sensitivity Analysis: 0.09 (mean) +/- 20%.
 tiresW_EnergyRec.transfers = [cp.ConstTransfer(1, cementKilns, priority=1),
-                              cp.StochasticTransfer(nr.triangular,[0.0506, 0.09, 0.1294], energyRecovery, priority=2),
+                              cp.StochasticTransfer(nr.triangular,[0.0405, 0.072, 0.1035], energyRecovery, priority=2),
                              ]
 
 

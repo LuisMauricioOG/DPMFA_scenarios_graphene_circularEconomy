@@ -17,6 +17,15 @@ DOI: 10.1021/acs.est.2c04002)
 
 Note: retrospective mass flows from the market entry year (i.e., batteries in 2014) to 2025 are considered. EXPLAIN WHY.
 """
+from pathlib import Path
+
+# Folder with the shared modules (components.py, Model.py, ...) and the input file
+# for_py_graphene_TBC.csv, i.e. the repository root. It is detected automatically
+# (this script's folder, or one/two levels above it); no editing needed.
+_HERE = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
+project_path = str(next((p for p in (_HERE, _HERE.parent, _HERE.parent.parent)
+                         if (p / 'for_py_graphene_TBC.csv').exists()), _HERE))
+
 import components as cp
 import numpy.random as nr
 import numpy as np
@@ -259,7 +268,7 @@ compartmentList = [totalInflow, production, manufacture, consumption,
 model.setCompartments(compartmentList)
 
 # Load production data
-productionData_TBC = pd.read_csv('C:\\Users\\ortl\\Documents\\Empa\\Articles\\pDPMFA_AdMa_EU_CE\\ProspectiveMFA_scenarios\\inputData\\for_py_graphene_TBC.csv', header=0) 
+productionData_TBC = pd.read_csv(Path(project_path) / 'for_py_graphene_TBC.csv', header=0) 
 # 2014 -> 2050
 # From production data, set as inflow
 productionData_TBC_EU = productionData_TBC.values
@@ -765,13 +774,10 @@ tiresW_preRecycling.transfers = [cp.ConstTransfer(1, tiresW_MatRecovery, priorit
                                  cp.StochasticTransfer(nr.triangular,[0.2006, 0.3429,0.4852], tiresW_EnergyRec, priority=2),
                                 ]
 
-
 # From Figure of ETRma's ELTs Report (2016), but not much explanation from where the values come from. Therefore, adding extra conversion factor (+/-30% unc.).
-# Value in Sensitivity Analysis: 0.09 (mean) +/- 20% general uncertainty.
 tiresW_EnergyRec.transfers = [cp.ConstTransfer(1, cementKilns, priority=1),
-                              cp.StochasticTransfer(nr.triangular,[0.06075, 0.108, 0.15525], energyRecovery, priority=2),
+                              cp.StochasticTransfer(nr.triangular,[0.0506, 0.09, 0.1294], energyRecovery, priority=2),
                              ]
-
 
 # Hypothesis: (very) high likelihood of release (elimination/transformation). In this case depending on the temperatures, but assuming working temperatures conditions of around 1450°C, 
 #graphene might be transformed = eliminated. Assuming that in the Energy Industry (incineration) compartment, the same hypothesis applies. But more variation in temperature; thus, allocated to WIP (simplification of the model).
@@ -793,10 +799,13 @@ tiresW_MatRecovery.transfers = [cp.StochasticTransfer(nr.triangular, [0.0383, 0.
 ## CHANGE: allocated to EoW_alternatives
 CivilEng.transfers = [cp.ConstTransfer(1, EoW_alternatives, priority=1)]
                                                  
+# Values under Sensitivity Analysis (mantaining the same proportions between the different recycling streams, but changing the total amount of tiresW_Recycling: 
+# Total among the 3 (mean) = CementFill + Pyrolysis + DockFenders = 0.1756 + 0.0065 + 0.0217 = 0.2038. Meaning that from that amount, to CementFill = 0.1756/0.2038 = 0.8617, to Pyrolysis = 0.0065/0.2038 = 0.0319, and to DockFenders = 0.0217/0.2038 = 0.1064 (%))   
+# If 1 - 0.955 (+/- 20%) = 0.045 (0.036 - 0.054), then the total amount of tiresW_Recycling = 0.045, and the amount to CementFill = 0.045*0.8617 = 0.0388, to Pyrolysis = 0.045*0.0319 = 0.0014, and to DockFenders = 0.045*0.1064 = 0.0048                                 
 tiresW_Recycling.transfers = [cp.ConstTransfer(1, tiresW_MechanicalRecycling_like, priority=1),
-                              cp.StochasticTransfer(nr.triangular,[0.0988, 0.1756, 0.2524], cementFill, priority=2), #Process not further investigated
-                              cp.StochasticTransfer(nr.triangular,[0.0037, 0.0065, 0.0093], Pyrolysis, priority=2),
-                              cp.StochasticTransfer(nr.triangular,[0.0122, 0.0217, 0.0312],  DockFenders, priority=2) #Process not further investigated
+                              cp.StochasticTransfer(nr.triangular,[0.022, 0.0388, 0.058], cementFill, priority=2), #Process not further investigated
+                              cp.StochasticTransfer(nr.triangular,[0.0008, 0.0014, 0.002], Pyrolysis, priority=2),
+                              cp.StochasticTransfer(nr.triangular,[0.0027, 0.0048, 0.0069],  DockFenders, priority=2) #Process not further investigated
                              ]
 
 # Hypothesis: high likelihood of release (elimination). In this case, the majority is expected to remain in the Carbon Black content (releases to Air are neglected but further research is needed)                                            

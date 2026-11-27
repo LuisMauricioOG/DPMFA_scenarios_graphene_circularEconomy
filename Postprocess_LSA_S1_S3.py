@@ -24,6 +24,7 @@ only bubble size and color.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -33,14 +34,20 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, SymLogNorm, TwoSlopeNorm
 
+# Shared view definitions (profile x Hyd_loss variant set) and the view logic.
+# Importing does not run the LSA workflow (guarded by __main__ there).
+from LocalSensitivityAnalysis_S1_S3 import VIEWS, apply_view, view_folder_name
+
 
 # =============================================================================
 # USER SETTINGS
 # =============================================================================
 
-PROJECT_ROOT = Path(
-    r"C:\Users\ortl\Documents\Empa\Articles\pDPMFA_AdMa_EU_CE"
-)
+# Where results are read from / written to. Default: <repository>/results_runner (git-ignored).
+# Set the environment variable DPMFA_OUTPUT_ROOT to use another folder. It is the same
+# rule as in LocalSensitivityAnalysis_S1_S3.py, so both scripts look in the same place.
+REPO_ROOT = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
+OUTPUT_ROOT = Path(os.environ.get("DPMFA_OUTPUT_ROOT", REPO_ROOT / "results_runner"))
 
 # Leave as None to automatically use the latest workbook found.
 # You can also paste a specific path, for example:
@@ -49,7 +56,7 @@ SENSITIVITY_WORKBOOK: Optional[Path] = None
 
 # Prefer today's dated result folder, but fall back to any *_SensitivityAnalysis_results folder.
 RUN_DATE = datetime.now().strftime("%Y%m%d")
-PREFERRED_RESULTS_ROOT = PROJECT_ROOT / f"{RUN_DATE}_SensitivityAnalysis_results"
+PREFERRED_RESULTS_ROOT = OUTPUT_ROOT / f"{RUN_DATE}_SensitivityAnalysis_results"
 
 # Exclude variants that should not appear anywhere after rerunning/cleaning.
 EXCLUDE_VARIANTS = {
@@ -113,7 +120,7 @@ GRID_COLOR = "#D0D0D0"
 
 # Arial first; matplotlib will fall back if Arial is unavailable on the machine.
 plt.rcParams.update({
-    "font.family": "sans-serif",
+    "font.family": "Arial",   # falls back to DejaVu Sans / Liberation Sans if Arial is missing
     "font.sans-serif": ["Arial", "DejaVu Sans", "Liberation Sans"],
     "axes.titlesize": 12,
     "axes.labelsize": 11,
@@ -149,7 +156,7 @@ def find_latest_sensitivity_workbook() -> Path:
 
     # 2) Any dated sensitivity-analysis result folder.
     candidate_patterns.append(
-        PROJECT_ROOT
+        OUTPUT_ROOT
         / "*_SensitivityAnalysis_results"
         / "_sensitivity_comparison_tables"
         / "DPMFA_sensitivity_comparison_ALL_*.xlsx"
@@ -255,6 +262,8 @@ def load_sensitivity_table(workbook: Path) -> pd.DataFrame:
         "sensitivity_ratio_mean",
         "q05_relative_change_pct",
         "q95_relative_change_pct",
+        "median_relative_change_pct",
+        "abs_relative_change_of_means_pct",
     ]
     for col in numeric_cols:
         if col in df.columns:
@@ -292,6 +301,10 @@ def ordered_variants(df: pd.DataFrame, scenario: str, scalar_only: bool = False)
         "TiresEnRec_low",
         "TiresRec_high",
         "TiresRec_low",
+        "Hyd_loss_high",
+        "Hyd_loss_low",
+        "Hyd_loss_50",
+        "Hyd_loss_100",
     ]
 
     present = list(sub["variant"].dropna().astype(str).unique())
@@ -406,7 +419,7 @@ def save_annual_tables(df: pd.DataFrame, output_root: Path) -> Path:
                 scalar_s = make_wide_table(
                     annual_df, scenario,
                     value_col="sensitivity_ratio_mean",
-                    metric_label="S = (%Δ annual mean sink flow) / (%Δ TC)",
+                    metric_label="S = (%Δ annual mean sink flow) / (%Δ perturbed TC)",
                     scalar_only=True,
                     include_baseline_row=True,
                 )
@@ -688,8 +701,21 @@ def main() -> None:
     print(f"Scenarios found: {sorted(df['scenario'].dropna().astype(str).unique())}")
     print(f"Indicators found: {sorted(df['indicator'].dropna().astype(str).unique())}")
 
-    annual_path = save_annual_tables(df, output_root)
-    bubble_paths = plot_cumulative_bubble_map(df, output_root)
+    # Default outputs = view A (original profile, no Hyd_loss variants), as before.
+    df_A = apply_view(df, "A")
+    annual_path = save_annual_tables(df_A, output_root)
+    bubble_paths = plot_cumulative_bubble_map(df_A, output_root)
+
+    # Per-view outputs (A-F), computed from stored values (no re-simulation).
+    view_paths: List[Path] = []
+    for key, spec in VIEWS.items():
+        vdf = apply_view(df, key)
+        view_root = output_root / "_views_postprocess" / view_folder_name(key)
+        view_root.mkdir(parents=True, exist_ok=True)
+        print(f"View {key}: profile={spec['profile']}, Hyd={spec['hyd'] or 'none'}")
+        view_paths += plot_cumulative_bubble_map(vdf, view_root)
+        if spec["outputs"] == "full":
+            view_paths.append(save_annual_tables(vdf, view_root))
 
     manifest_path = output_root / "postprocess_LSA_outputs_manifest.txt"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -700,6 +726,9 @@ def main() -> None:
         f.write(f"{annual_path}\n\n")
         f.write("Bubble-map outputs:\n")
         for path in bubble_paths:
+            f.write(f"{path}\n")
+        f.write("\nPer-view outputs (A-F):\n")
+        for path in view_paths:
             f.write(f"{path}\n")
 
     print("\nSaved annual table:")
